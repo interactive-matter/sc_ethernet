@@ -7,3 +7,7 @@
 *.xi
 *.i
 *.a
+#do not check in depdendency files
+*.xc.d
+*.c.d
+*.s.d
