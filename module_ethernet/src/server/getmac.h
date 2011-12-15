@@ -51,6 +51,21 @@ void ethernet_getmac_otp_count(port otp_data, out port otp_addr, port otp_ctrl, 
  **/
 void ethernet_getmac_otp(port otp_data, out port otp_addr, port otp_ctrl, char macaddr[]);
 
+/**
+ * Converts the MAC address from 6 bytes, as used in the OTP to 2 ints, e.g. as used in the ethernet server
+ * \param byteMAC the 6 bytes of the MAC address
+ * \param intMAC the 2 ints where the adress is stored
+ */
+void convertMACTo2IntVersion(const char byteMAC[6], int intMAC[2]);
+
+/**
+ * Converts the MAC address from 2 ints to a mac address of 6 bytes, e.g. as used in the OTP or for fast packet filtering
+ * \param intMAC the 2 ints o the MAC address
+ * \param byteMAC the 6 bytes where the mac address is copied to.
+ */
+void convertMACTo6ByteVersion(const int intMAC[2], char byteMAC[6]);
+
+
 #endif
 
 #endif

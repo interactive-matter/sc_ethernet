@@ -34,7 +34,6 @@
 #define tRP_TICKS (80 / (1000 / XS1_TIMER_MHZ) ) // G-Series - Use the longer one
 // #define tRP_TICKS (70 / (1000 / XS1_TIMER_MHZ) ) // L-Series
 
-
 // Read an address in OTP
 static int otpRead(port otp_data, out port otp_addr, port otp_ctrl, unsigned address)
 {
@@ -222,4 +221,21 @@ void ethernet_getmac_otp(port otp_data, out port otp_addr, port otp_ctrl, char m
 {
 	ethernet_getmac_otp_indexed(otp_data, otp_addr, otp_ctrl, macaddr, 0);
 }
+
+//convert the byte oriented mac of the otp to the int format e.g. used by the ethernet server
+void convertMACTo2IntVersion(const char byteMAC[6], int intMAC[2]) {
+	intMAC[0] = byteMAC[0] | (byteMAC[1]<<8) | (byteMAC[2]<<16) | (byteMAC[3]<<16);
+	intMAC[1] = byteMAC[3] | (byteMAC[4]<<8);
+}
+
+//convert the int oriented MAC address e.g. used by the ethernet server to a byte oriented mac used in OTP
+void convertMACTo6ByteVersion(const int intMAC[2], char byteMAC[6]) {
+	byteMAC[0] = intMAC[0];
+	byteMAC[1] = intMAC[0] >> 8;
+	byteMAC[2] = intMAC[0] >> 16;
+	byteMAC[3] = intMAC[0] >> 24;
+	byteMAC[4] = intMAC[1];
+	byteMAC[5] = intMAC[1] >> 8;
+}
+
 
