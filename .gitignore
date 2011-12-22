@@ -1,5 +1,4 @@
-*/.build_*/*
-*/.build/*
+*/.build*/*
 */bin/*
 *.o
 *.xe
@@ -8,7 +7,14 @@
 *.xi
 *.i
 *.a
+<<<<<<< HEAD
 #do not check in depdendency files
 *.xc.d
 *.c.d
 *.s.d
+test_mii_singlethread/images/
+doc/.doxygen/
+doc/.sources/
+doc/Doxyfile-e
+
+>>>>>>> 7940be1aa69413373c88740c9ba0e1c9795f99b3
