@@ -13,7 +13,6 @@ BUILD_SUBDIRS = app_ethernet_demo \
 #     test_mii_singlethread \
 #	app_mii_singlextcp_demo \
 #	app_mii_singleavb_demo
->>>>>>> 7940be1aa69413373c88740c9ba0e1c9795f99b3
 
 XMOS_MAKE_PATH ?= ..
 include $(XMOS_MAKE_PATH)/xcommon/module_xcommon/build/Makefile.toplevel
