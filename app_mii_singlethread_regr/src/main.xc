@@ -24,9 +24,6 @@
 #define PORT_ETH_RXER    XS1_PORT_1L
 #define PORT_ETH_FAKE    XS1_PORT_8C
 
-#define PORT_ETH_RST_N_MDIO  XS1_PORT_1P
-#define PORT_ETH_MDC         XS1_PORT_1O
-
 on stdcore[0]: mii_interface_t mii =
   {
     XS1_CLKBLK_1,
@@ -44,15 +41,6 @@ on stdcore[0]: mii_interface_t mii =
     PORT_ETH_FAKE,
   };
 
-#ifdef PORT_ETH_RST_N
-on stdcore[0]: out port p_mii_resetn = PORT_ETH_RST_N;
-on stdcore[0]: smi_interface_t smi = { PORT_ETH_MDIO, PORT_ETH_MDC, 0 };
-#else
-on stdcore[0]: smi_interface_t smi = { PORT_ETH_RST_N_MDIO, PORT_ETH_MDC, 1 };
-#endif
-
-on stdcore[0]: clock clk_smi = XS1_CLKBLK_5;
-
 
 
 
@@ -64,21 +52,20 @@ unsigned char packet[] = {
     0, 0, 0, 0,   0, 0, 0, 0
 };
 
-extern int nextBuffer;
-
 void emptyIn(chanend cIn, chanend cNotifications) {
     int b[1600];
     int address = 0x1C000;
+    struct miiData miiData;
 
-    miiBufferInit(cIn, cNotifications, b, 1600);
+    miiBufferInit(miiData, cIn, cNotifications, b, 1600);
     asm("stw %0, %1[0]" :: "r" (b), "r" (address));
 
     while (1) {
 
         int nBytes, a, timeStamp;
-        miiNotified(cNotifications);
+        miiNotified(miiData, cNotifications);
         while(1) {
-            {a,nBytes,timeStamp} = miiGetInBuffer();
+            {a,nBytes,timeStamp} = miiGetInBuffer(miiData);
 
             if (a == 0) {
                 break;
@@ -86,9 +73,9 @@ void emptyIn(chanend cIn, chanend cNotifications) {
             asm("stw %0, %1[1]" :: "r" (a), "r" (address));
             asm("stw %0, %1[2]" :: "r" (nBytes), "r" (address));
             asm("stw %0, %1[6]" :: "r" (timeStamp), "r" (address));
-            miiFreeInBuffer(a);
+            miiFreeInBuffer(miiData, a);
         }
-        miiRestartBuffer();
+        miiRestartBuffer(miiData);
     } 
 }
 
@@ -131,8 +118,10 @@ void regression(void) {
     chan cIn, cOut;
     chan notifications;
     par {
-        { miiDriver(clk_smi, null, smi, mii,
-                    cIn, cOut, 1);}
+        {
+        	miiInitialise(null, mii);
+        	miiDriver(mii, cIn, cOut);
+        }
         {x(); emptyIn(cIn, notifications);}
         {x(); emptyOut(cOut);}
         {burn();}

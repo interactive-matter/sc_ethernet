@@ -52,7 +52,9 @@
 #define MII_RX_BUFSIZE (4096)
 #endif
 
+#ifndef MII_RX_BUFSIZE_LOW_PRIORITY
 #define MII_RX_BUFSIZE_LOW_PRIORITY MII_RX_BUFSIZE
+#endif
 
 #endif
 
@@ -69,6 +71,7 @@
 #ifndef ETHERNET_MAX_TX_HP_PACKET_SIZE
 #define ETHERNET_MAX_TX_HP_PACKET_SIZE (1518)
 #endif
+
 
 #define ETHERNET_USE_HARDWARE_LOCKS
 
@@ -138,28 +141,24 @@ typedef struct mii_packet_t {
 #define STRINGIFY0(x) #x
 #define STRINGIFY(x) STRINGIFY0(x)
 
-
-
-#ifdef __XC__
-
 #ifdef ETHERNET_INLINE_PACKET_GET
 // The inline assembler version of the Get breaks.  Use a C function until
 // a tools fix is available
 #define create_buf_getset(field) \
   inline int mii_packet_get_##field (int buf) { \
     int x; \
-    asm("ldw %0,%1[" STRINGIFY(BUF_OFFSET_ ## field) "]":"=r"(x):"r"(buf)); \
+    __asm__("ldw %0,%1[" STRINGIFY(BUF_OFFSET_ ## field) "]":"=r"(x):"r"(buf)); \
     return x; \
  } \
  inline void mii_packet_set_##field (int buf, int x) { \
-  asm("stw %1, %0[" STRINGIFY(BUF_OFFSET_ ## field) "]"::"r"(buf),"r"(x)); \
+  __asm__("stw %1, %0[" STRINGIFY(BUF_OFFSET_ ## field) "]"::"r"(buf),"r"(x)); \
  }
 #else
 // Temporary version of the get/set to avoid compiler issue with inline assembler
 #define create_buf_getset(field) \
  int mii_packet_get_##field (int buf); \
  inline void mii_packet_set_##field (int buf, int x) { \
-  asm("stw %1, %0[" STRINGIFY(BUF_OFFSET_ ## field) "]"::"r"(buf),"r"(x)); \
+  __asm__("stw %1, %0[" STRINGIFY(BUF_OFFSET_ ## field) "]"::"r"(buf),"r"(x)); \
  }
 #endif
 
@@ -169,6 +168,7 @@ create_buf_getset(filter_result)
 create_buf_getset(src_port)
 create_buf_getset(timestamp_id)
 create_buf_getset(stage)
+create_buf_getset(tcount)
 create_buf_getset(crc)
 create_buf_getset(forwarding)
 
@@ -177,13 +177,13 @@ inline int mii_packet_get_data_ptr(int buf) {
 }
 
 inline void mii_packet_set_data_word(int data, int n, int v) {
-  asm("stw %0,%1[%2]"::"r"(v),"r"(data),"r"(n));
+  __asm__("stw %0,%1[%2]"::"r"(v),"r"(data),"r"(n));
 }
 
 #ifdef ETHERNET_INLINE_PACKET_GET
 inline int mii_packet_get_data_word(int data, int n) {
   int x;
-  asm("ldw %0,%1[%2]":"=r"(x):"r"(data),"r"(n));
+  __asm__("ldw %0,%1[%2]":"=r"(x):"r"(data),"r"(n));
   return x;
 }
 #else
@@ -193,11 +193,13 @@ int mii_packet_get_data_word(int data, int n);
 #define mii_packet_set_data_word_imm(data, n, v) \
   asm("stw %0,%1[" STRINGIFY(n) "]"::"r"(v),"r"(data));
 
+#define mii_packet_get_data_word_imm(data, n, v) \
+  asm("ldw %0,%1[" STRINGIFY(n) "]":"=r"(v),"r"(data));
 
 #ifdef ETHERNET_INLINE_PACKET_GET
 inline int mii_packet_get_data(int buf, int n) {
   int x;
-  asm("ldw %0,%1[%2]":"=r"(x):"r"(buf),"r"(n+BUF_DATA_OFFSET));
+  __asm__("ldw %0,%1[%2]":"=r"(x):"r"(buf),"r"(n+BUF_DATA_OFFSET));
   return x;
 }
 #else
@@ -205,16 +207,12 @@ int mii_packet_get_data(int buf, int n);
 #endif
 
 inline void mii_packet_set_data(int buf, int n, int v) {
-  asm("stw %0,%1[%2]"::"r"(v),"r"(buf),"r"(n+BUF_DATA_OFFSET));
+  __asm__("stw %0,%1[%2]"::"r"(v),"r"(buf),"r"(n+BUF_DATA_OFFSET));
 }
 
 inline void mii_packet_set_data_short(int buf, int n, int v) {
-  asm("st16 %0,%1[%2]"::"r"(v),"r"(buf),"r"(n+(BUF_DATA_OFFSET*2)));
+  __asm__("st16 %0,%1[%2]"::"r"(v),"r"(buf),"r"(n+(BUF_DATA_OFFSET*2)));
 }
-
-
-#endif
-
 
 #ifdef __XC__
 void mii_rx_pins(

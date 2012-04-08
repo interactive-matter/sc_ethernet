@@ -41,13 +41,14 @@ typedef struct malloc_hdr_t {
 
 void mii_init_mempool(mii_mempool_t mempool0, int size, int maxsize_bytes) {
   mempool_info_t *info = (mempool_info_t *) mempool0;
-  info->max_packet_size = sizeof(mii_packet_t) + sizeof(malloc_hdr_t) - (1518-maxsize_bytes);
+  info->max_packet_size = sizeof(mii_packet_t) + sizeof(malloc_hdr_t) - (((MAX_ETHERNET_PACKET_SIZE+3)&~3)-maxsize_bytes);
   info->max_packet_size = (info->max_packet_size + 3) & ~3;
   info->start = (int *) (mempool0 + sizeof(mempool_info_t));
   info->end = (int *) (mempool0 + size);
   info->end -= (info->max_packet_size >> 2);
   info->rdptr = info->start;
   info->wrptr = info->start;
+  *(info->start) = 0;
 #ifndef ETHERNET_USE_HARDWARE_LOCKS
   swlock_init(&info->lock);
 #endif
@@ -61,22 +62,16 @@ mii_buffer_t mii_reserve(mii_mempool_t mempool)
   int *wrptr = info->wrptr;
 
   malloc_hdr_t *hdr;
-  if (wrptr > info->end) {
-    if (rdptr == info->start)
-    {
-      return 0;
-    }
-    else
-      wrptr = info->start;
-  }
 
-  // Test for space left in the range 1 -> mxa_packet_size
-  if (((unsigned)rdptr - (unsigned)wrptr - 1) < info->max_packet_size)
-  {
-    return 0;
+  // If the write pointer is at the start, then we check if the length is
+  // non-zero meaning the buffer is full
+  if (wrptr == info->start && *wrptr != 0) return 0;
+
+  // If the read pointer is beyond the write pointerm we check if there
+  // is enough space to avoid overwriting the tail
+  if (((unsigned)rdptr - (unsigned)wrptr)-1 < info->max_packet_size) {
+	  return 0;
   }
-  
-  info->wrptr = wrptr;
   
   hdr = (malloc_hdr_t *) wrptr;
   hdr->info = info;
@@ -89,13 +84,25 @@ void mii_commit(mii_buffer_t buf, int n) {
   mempool_info_t *info = (mempool_info_t *) hdr->info;
   mii_packet_t *pkt;
 
-  hdr->size = (sizeof(malloc_hdr_t)/4) + ((n+3)>>2);
-  info->wrptr += (hdr->size);
+  unsigned size = (sizeof(malloc_hdr_t)/4) + ((n+3)>>2);
 
   pkt = (mii_packet_t *) buf;
-  pkt->tcount = 0;
   pkt->stage = 0;
+#if (NUM_ETHERNET_PORTS > 1) && !defined(DISABLE_ETHERNET_PORT_FORWARDING)
   pkt->forwarding = 0;
+#endif
+
+  // This goes last - updating the write pointer is the action which enables the
+  // ethernet_rx_server to start considering the packet.  The server will ignore
+  // the packet initially, because the 'stage' is set to zero.  The filter thread
+  // will set the stage to 1 when the filter has run, and at that point the
+  // ethernet_rx_server thread will start to process it.
+  {
+	  int* wrptr = info->wrptr + size;
+	  if (wrptr > info->end) wrptr = info->start;
+	  hdr->size = size;
+	  info->wrptr = wrptr;
+  }
 
   return;
 }
@@ -104,7 +111,6 @@ void mii_commit(mii_buffer_t buf, int n) {
 void mii_free(mii_buffer_t buf) {
   malloc_hdr_t *hdr = (malloc_hdr_t *) ((char *) buf - sizeof(malloc_hdr_t));
   mempool_info_t *info = (mempool_info_t *) hdr->info;
-  int free_buf = 1;
 
 #ifndef ETHERNET_USE_HARDWARE_LOCKS
   swlock_acquire(&info->lock);
@@ -112,35 +118,36 @@ void mii_free(mii_buffer_t buf) {
   __hwlock_acquire(ethernet_memory_lock);
 #endif
 
-  do {
+  while (1) {
 	// If we are freeing the oldest packet in the fifo then actually
 	// move the rd_ptr.
-    if ((char *) hdr == (char *) info->rdptr ||
-                      ((char *) hdr == (char *) info->start && 
-                       (char *) info->rdptr > (char *) info->end)) {
+    if ((char *) hdr == (char *) info->rdptr) {
+      malloc_hdr_t *old_hdr = hdr;
 
       int size = hdr->size;
       if (size < 0) size = -size;
+
+      // Move to the next packet
       hdr = (malloc_hdr_t *) ((int *) hdr + size);
+      if ((char *) hdr > (char *) info->end) hdr = (malloc_hdr_t *) info->start;
       info->rdptr = (int *) hdr;
 
-      // Wrap to the start of the buffer
-      if ((char *) hdr > (char *) info->end) {
-        hdr = (malloc_hdr_t *) info->start;
-      }
+      // Mark as empty
+      old_hdr->size = 0;
 
       // If we have an unfreed packet, or have hit the end of the
-      // mempool fifo then stop
-      if (hdr->size > 0 || (char *) hdr == (char *) info->wrptr) {
-          free_buf = 0;
+      // mempool fifo then stop (order of test is important due to lock
+      // free mii_commit)
+      if ((char *) hdr == (char *) info->wrptr || hdr->size > 0) {
+          break;
       }
     } else {
       // If this isn't the oldest packet in the queue then just mark it
       // as free by making the size = -size
       hdr->size = -(hdr->size);
-      free_buf = 0;
+      break;
     }
-  } while (free_buf);
+  };
 
 #ifndef ETHERNET_USE_HARDWARE_LOCKS
   swlock_release(&info->lock);
@@ -192,7 +199,13 @@ int mii_update_my_rdptr(mii_mempool_t mempool, int rdptr0)
 
   hdr = (malloc_hdr_t *) rdptr;
   size = hdr->size;
-  if (size < 0) size = -size;
+
+#ifdef MII_MALLOC_ASSERT
+  // Should always be a positive size
+  if (size <= 0) {
+	  __builtin_trap();
+  }
+#endif
 
   rdptr = rdptr + size;  
 
@@ -215,34 +228,12 @@ mii_buffer_t mii_get_my_next_buf(mii_mempool_t mempool, int rdptr0)
       rdptr = info->start;
   }
 
+#ifdef MII_MALLOC_ASSERT
+  // Should always be a positive size
+  if (*rdptr <= 0) {
+	  __builtin_trap();
+  }
+#endif
+
   return (mii_buffer_t) ((char *) rdptr + sizeof(malloc_hdr_t));
 }
-
-// These are the non-inline implementations of the mii_packet member
-// get functions
-
-int mii_packet_get_data(int buf, int n)
-{
-	return (int)(((mii_packet_t*)buf)->data[n]);
-}
-
-int mii_packet_get_data_word(int data, int n)
-{
-	return ((unsigned int*)data)[n];
-}
-
-#define gen_get_field(field) \
-	int mii_packet_get_##field (int buf) \
-	{ \
-		return ((mii_packet_t*)buf)->field; \
-	}
-
-gen_get_field(length)
-gen_get_field(timestamp)
-gen_get_field(filter_result)
-gen_get_field(src_port)
-gen_get_field(timestamp_id)
-gen_get_field(stage)
-gen_get_field(crc)
-gen_get_field(forwarding)
-

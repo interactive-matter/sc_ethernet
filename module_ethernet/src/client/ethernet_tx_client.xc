@@ -23,6 +23,17 @@
 #include "ethernet_tx_client.h"
 #include "print.h"
 
+
+#pragma select handler
+void mac_check_link_client(chanend c, unsigned char &linkNum, int &status)
+{
+  inuchar_byref(c, linkNum);
+
+  status = inuchar(c);
+  (void) inuchar(c);
+  (void) inct(c);
+}
+
 #pragma unsafe arrays
 static void ethernet_send_frame_unify(chanend ethernet_tx_svr, unsigned int Buf[], int count, unsigned int &sentTime, unsigned int Cmd, int ifnum)
 {
@@ -139,6 +150,12 @@ void send_avb_1722_router_cmd(chanend c,
     c <: hash;
   }
 }
+
+void mac_initialize_routing_table(chanend c)
+{
+	c <: ETHERNET_TX_INIT_AVB_ROUTER;
+}
+
 #endif
 
 int mac_calc_idle_slope(int bps);

@@ -10,6 +10,7 @@
 #include <print.h>
 #include <platform.h>
 #include <stdlib.h>
+#include "smi.h"
 #include "miiClient.h"
 #include "miiDriver.h"
 
@@ -33,9 +34,9 @@ on stdcore[1]: mii_interface_t mii =
 
 #ifdef PORT_ETH_RST_N
 on stdcore[1]: out port p_mii_resetn = PORT_ETH_RST_N;
-on stdcore[1]: smi_interface_t smi = { PORT_ETH_MDIO, PORT_ETH_MDC, 0 };
+on stdcore[1]: smi_interface_t smi = { 0, PORT_ETH_MDIO, PORT_ETH_MDC };
 #else
-on stdcore[1]: smi_interface_t smi = { PORT_ETH_MDIO, PORT_ETH_MDC, 1 };
+on stdcore[1]: smi_interface_t smi = { 0, PORT_ETH_MDIO, PORT_ETH_MDC };
 #endif
 
 on stdcore[1]: clock clk_smi = XS1_CLKBLK_5;
@@ -277,27 +278,27 @@ void handlePacket(chanend cOut, int a, int nBytes) {
 
 void pingDemo(chanend cIn, chanend cOut, chanend cNotifications) {
     int b[3200];
+    struct miiData miiData;
     
     printstr("Test started\n");
-    miiBufferInit(cIn, cNotifications, b, 3200);
+    miiBufferInit(miiData, cIn, cNotifications, b, 3200);
     printstr("IN Inited\n");
     miiOutInit(cOut);
     printstr("OUT inited\n");
     
     while (1) {
         int nBytes, a, timeStamp;
-        miiNotified(cNotifications);
+        miiNotified(miiData, cNotifications);
         while(1) {
-            {a,nBytes,timeStamp} = miiGetInBuffer();
+            {a,nBytes,timeStamp} = miiGetInBuffer(miiData);
 
             if (a == 0) {
                 break;
             }
-//            printhexln(a);
             handlePacket(cOut, a, nBytes);
-            miiFreeInBuffer(a);
+            miiFreeInBuffer(miiData, a);
         }
-        miiRestartBuffer();
+        miiRestartBuffer(miiData);
     } 
 }
 
@@ -325,8 +326,12 @@ void packetResponse(void) {
     chan cIn, cOut;
     chan notifications;
     par {
-        { miiDriver(clk_smi, null, smi, mii,
-                    cIn, cOut, 1);}
+        {
+        	miiInitialise(null, mii);
+            smi_port_init(clk_smi, smi);
+            eth_phy_config(1, smi);
+        	miiDriver(mii, cIn, cOut);
+        }
         {x(); pingDemo(cIn, cOut, notifications);}
         {burn();}
         {burn();}

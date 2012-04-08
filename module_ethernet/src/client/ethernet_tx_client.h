@@ -20,6 +20,9 @@
 
 #define ETH_BROADCAST (-1)
 
+#define ETH_LINK_IS_DOWN  (0)
+#define ETH_LINK_IS_UP    (1)
+
 /** Sends an ethernet frame. Frame includes dest/src MAC address(s), type
  *  and payload.
  *
@@ -98,6 +101,14 @@ int mac_get_macaddr(chanend c_mac, unsigned char macaddr[]);
 
 #define ethernet_get_my_mac_adrs mac_get_macaddr
 
+/**
+ * Initialise the ethernet routing table.
+ *
+ * This is used by AVB to pass routing information into the ethernet
+ * filtering component.
+ */
+void mac_initialize_routing_table(chanend c);
+
 /** Adjust the mac level router table
  * \todo - fill this in - maybe change the name to something non-AVB
  *         specific.  can it be useful outside of AVB?
@@ -125,5 +136,12 @@ void send_avb_1722_router_cmd(chanend c,
  */
 void mac_set_qav_bandwidth(chanend c_mac,
                            int bits_per_second);
+
+
+#ifdef __XC__ 
+/* Select handler to check if the Ethernet link is up or down */
+#pragma select handler
+void mac_check_link_client(chanend c, unsigned char &linkNum, int &status);
+#endif
 
 #endif
