@@ -7,7 +7,9 @@
 *.xi
 *.i
 *.a
-<<<<<<< HEAD
+#no eclipse project files
+.project
+
 #do not check in depdendency files
 *.xc.d
 *.c.d
@@ -17,4 +19,3 @@ doc/.doxygen/
 doc/.sources/
 doc/Doxyfile-e
 
->>>>>>> 7940be1aa69413373c88740c9ba0e1c9795f99b3
